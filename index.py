@@ -4,25 +4,33 @@
 
 import pygame, sys
 from pygame.locals import *
+from enum import Enum
 
-from helper import *
+class Settings:
+	CELL_SIZE = 50
+	PADDING = 4
+	TOTAL_PADDING = 9 * PADDING
 
-# constants
-SEA, SUBMARINE, DESTROYER, TANKER, AIRCRAFT_CARRIER = 1, 2, 3, 4, 5
-
-# game settings
-cell_size = 50
-padding = 4
-total_padding = 9 * padding
-
-## Colors 
-bg_color = (25,28,30)
+class Color:
+	BACKGROUND = (25,28,30)
+	SEA = (19,126,229)
 
 class Piece:
 	def __init__(self, name, size, color):
 		self.name = name
 		self.size = size
 		self.color = color
+
+class Ship(Enum):
+	CARRIER = Piece(u"Porta-aviões", 5, (19,126,229))
+	BATTLESHIP = Piece("Navio de Guerra", 4, (19,126,229))
+	CRUISER = Piece("Cruzador", 3, (19,126,229))
+	DESTROYER = Piece("Contratorpedeiro", 2, (19,126,229))
+	SUBMARINE = Piece("Submarino", 1, (19,126,229))
+
+class GameState:
+	PREPARATION = 0
+	MATCH_RUNNING = 1
 
 class Match:
 	board1 = []
@@ -31,15 +39,15 @@ class Match:
 	def __init__(self, screen):
 		self.screen = screen
 		self.setup_boards()
-		self.board_surface = pygame.Surface([10 * cell_size + total_padding, 10 * cell_size + total_padding])
+		self.board_surface = pygame.Surface([10 * Settings.CELL_SIZE + Settings.TOTAL_PADDING, 10 * Settings.CELL_SIZE + Settings.TOTAL_PADDING])
 
 	def setup_boards(self):
 		for row in range(10):
 			self.board1.append([])
 			self.board2.append([])
 			for col in range(10):
-				self.board1[row].append(Piece("SEA", 1, (19,126,229)))
-				self.board2[row].append(Piece("SEA", 1, (19,126,229)))
+				self.board1[row].append("S")
+				self.board2[row].append("S")
 
 	def render(self):
 		board1 = self.board1
@@ -50,43 +58,41 @@ class Match:
 
 		for row in range(len(board1)):
 			for col in range(len(board1[0])):
-				piece = board1[row][col]
+				# piece = board1[row][col]
 
-				x = cell_size * col
-				y = cell_size * row
+				x = Settings.CELL_SIZE * col
+				y = Settings.CELL_SIZE * row
 
 				if col > 0:
-					x += padding * (col)
+					x += Settings.PADDING * (col)
 
 				if row > 0:
-					y += padding * (row)
+					y += Settings.PADDING * (row)
 
 				position = x, y
 
-				cell = pygame.Surface([cell_size, cell_size])
-				cell.fill(piece.color)
+				cell = pygame.Surface([Settings.CELL_SIZE, Settings.CELL_SIZE])
+				cell.fill(Color.SEA)
 				board_surface.blit(cell, position)
 
-		self.grid1 = pygame.Surface([cell_size * 7, cell_size * 5])
+		self.grid1 = pygame.Surface([Settings.CELL_SIZE * 7, Settings.CELL_SIZE * 5])
 		self.grid1.fill((255,0,0))
-		pos = cell_size + (cell_size * 10 + total_padding) + cell_size, cell_size
+		pos = Settings.CELL_SIZE + (Settings.CELL_SIZE * 10 + Settings.TOTAL_PADDING) + Settings.CELL_SIZE, Settings.CELL_SIZE
 		screen.blit(self.grid1, pos)
 
-		self.grid2 = pygame.Surface([cell_size * 7, cell_size * 5])
+		self.grid2 = pygame.Surface([Settings.CELL_SIZE * 7, Settings.CELL_SIZE * 5])
 		self.grid2.fill((255,0,0))
-		pos = cell_size + (cell_size * 10 + total_padding) + cell_size, total_padding + cell_size * 6
+		pos = Settings.CELL_SIZE + (Settings.CELL_SIZE * 10 + Settings.TOTAL_PADDING) + Settings.CELL_SIZE, Settings.TOTAL_PADDING + Settings.CELL_SIZE * 6
 		screen.blit(self.grid2, pos)
 
-		screen.blit(board_surface, (cell_size, cell_size))
-
+		screen.blit(board_surface, (Settings.CELL_SIZE, Settings.CELL_SIZE))
 
 class Game:
 	def __init__(self):
 		pygame.init()
-		total_padding = 9 * padding
-		self.width, self.height = 20 * cell_size + total_padding, 12 * cell_size + total_padding
-		self.screen = create_window(self.width, self.height)
-		rename_window("Batalha Naval em Python")
+		self.width, self.height = 20 * Settings.CELL_SIZE + Settings.TOTAL_PADDING, 12 * Settings.CELL_SIZE + Settings.TOTAL_PADDING
+		self.screen = pygame.display.set_mode((self.width, self.height))
+		pygame.display.set_caption("Batalha Naval em Python")
 		self.match = Match(self.screen)
 
 	def loop(self):
@@ -95,10 +101,13 @@ class Game:
 				if event.type == pygame.QUIT:
 					sys.exit()
 
+				if event.type == KEYDOWN:
+					print "pressed", event
+
 			self.render()
 
 	def render(self):
-		self.screen.fill(bg_color)
+		self.screen.fill(Color.BACKGROUND)
 		self.match.render()
 		pygame.display.flip()
 
