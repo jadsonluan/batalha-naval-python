@@ -56,10 +56,17 @@ class Color:
 	BACKGROUND = (25,28,30)
 	SEA = (22,141,255)
 	GRID = (0,0,0)
-	MENU_BG = (38,58,114)
-	TEXT = (44,185,217)
 	SUCCESS = (45,199,45)
 	FAIL = (203,17,38)
+
+	# Backgrounds
+	MENU_BG = (202,194,255) 
+
+	# Texting
+	TITLE = (0,45,143)  
+	TEXT = (255,255,255)
+	MENU_OPTION = (17,17,17)
+	SELECTED = (74,199,204) 
 
 	# State
 	WIN = (74,199,204) 
@@ -68,15 +75,20 @@ class Color:
 	# Basic
 	GRAY = (84,74,74)
 	WHITE = (255,255,255)
+	BLACK = (0,0,0)
 
 class GameState(Enum):
 	PREPARATION = 0
 	MATCH_RUNNING = 1
 	SHOOTING = 2
 	GAMEOVER = 3
+	
 	MENU = 4
-	WIN = 5
-	LOSE = 6
+	CREDITS = 5
+	HOWTOPLAY = 6
+
+	WIN = 7
+	LOSE = 8
 
 class Code(Enum):
 	PREPARED = "P"
@@ -87,6 +99,31 @@ class Code(Enum):
 
 class Message(Enum):
 	PREPARED = "P"
+
+class Text:
+	def __init__(self, text, color, size, left, top, centerx, centery, fontname):
+		self.font = pygame.font.Font(fontname, int(Settings.CELL_SIZE/size))
+		self.surface = self.font.render(text, 1, color)
+		self.rect = self.surface.get_rect()
+		self.left = left
+		self.top = top
+		self.centerx = centerx
+		self.centery = centery
+		
+		size = self.font.size(text)
+		self.width = size[0]
+		self.height = size[1]
+
+	def get_new_rect(self):
+		s_rect = self.rect
+		
+		s_rect.left = self.left
+		s_rect.top = self.top
+
+		if self.centerx: s_rect.left += Settings.SCREEN_WIDTH/2 - self.width/2
+		if self.centery: s_rect.top += Settings.SCREEN_HEIGHT/2 - self.height/2
+
+		return s_rect
 
 class Cell:
 	def __init__(self, location, player, shooted=False, ship=None):
@@ -196,23 +233,7 @@ class Matchmaking:
 		server.bind(origin)
 		server.listen(1)
 
-		# while True:
 		con, client = server.accept()
-		print "Opponent found!", client
-
-		# while True:
-			# print "Esperando mensagem"
-			# msg = con.recv(1024)
-			# if not msg: break
-			# print client, msg
-		# print "Finalizando conexão do cliente", client
-		# con.close()
-		# con, client = server.accept()
-		# data = con.recv(1024)
-		# matrix = [[x for x in line.split("-")] for line in data.split('/')]
-		# print len(matrix)
-		# con.close()
-		# server.close()
 		con.settimeout(Settings.TIMEOUT)
 		return con
 
@@ -256,7 +277,6 @@ class Match(threading.Thread):
 			except socket.timeout:
 				pass
 
-		print "desconecting..."
 		self.states['thread_running'] = False
 		self.connection.close()
 
@@ -275,21 +295,16 @@ class Match(threading.Thread):
 			board = message[1]
 			self.sync_enemy(board)
 		elif code == Code.EXIT.value:
-			print "Você venceu por W.O."
 			self.connection.close()
 			self.states["thread_running"] = False
 		elif code == Code.PREPARED.value:
 			self.enemy_prepared = True
-			print "enemy prepared"
 		elif code == Code.SHOT.value:
 			row, col = message[1].split(",")
 			row, col = int(row), int(col)
 			cell = self.board[row][col]
 			
-			if cell.ship is None:
-				print "[%d,%d] Tiro na água!" % (row, col)
-			else:
-				print "[%d,%d] Acertou um %s!" % (row, col, cell.ship.name)
+			if cell.ship is not None:
 				cell.sync_color()
 			cell.shoot()
 			self.turn = True
@@ -304,7 +319,6 @@ class Match(threading.Thread):
 
 	def sync_enemy(self, data):
 		# Dá pra otimizar não reescrevendo o tabuleiro, apenas comparando o que mudou
-		print "sincronizando o tab inimigo"
 		board = [[x for x in line.split("|")] for line in data.split('/')]
 
 		for row in range(10):
@@ -312,7 +326,6 @@ class Match(threading.Thread):
 				for ship in Ship:
 					if str(ship.value) == str(board[row][col])[0]:
 						new_cell_ship = ship
-						print new_cell_ship
 						break
 				else:
 					new_cell_ship = None
@@ -391,7 +404,6 @@ class Match(threading.Thread):
 
 		if len(self.ships) >= Settings.MAX_SHIPS:
 			self.connection.send(Message.PREPARED.value)
-			print "you prepared"
 			self.prepared = True
 
 	def count_ships(self):
@@ -470,6 +482,7 @@ class Game:
 		pygame.display.set_caption("Batalha Naval em Python")
 		self.selected_ship = None
 		self.ship_orientation = "H"
+		self.buttons = []
 		self.show_menu()
 		self.match = None
 
@@ -477,15 +490,17 @@ class Game:
 		while self.running:
 			for event in pygame.event.get():
 				if event.type == pygame.QUIT:
-					print "trying to quit"
 					self.exit()
 
 				if event.type == KEYDOWN and event.key == K_SPACE:
 					# debug code
 					pass
 
-				if self.match is None and (self.gamestate == GameState.WIN or self.gamestate == GameState.LOSE) and event.type == KEYDOWN and event.key == K_ESCAPE:
-					print "show menu"
+				esc_pressed = event.type == KEYDOWN and event.key == K_ESCAPE
+				if self.match is None and (self.gamestate == GameState.WIN or self.gamestate == GameState.LOSE) and esc_pressed:
+					self.show_menu()
+
+				if esc_pressed and (self.gamestate == GameState.CREDITS or self.gamestate == GameState.HOWTOPLAY):
 					self.show_menu()
 
 				# W.O
@@ -539,74 +554,197 @@ class Game:
 								for col in range(len(board[0])):
 									cell = board[row][col]
 									if cell.rect.collidepoint(mouse_pos):
-										print "shooting at %d,%d" % (row, col)
 										if not cell.shooted:
 											self.match.shot(cell, row, col)
 											
-				elif self.gamestate == GameState.MENU:
-					if event.type == KEYDOWN:
-						if event.key == K_w:
-							print "Esperando por outro jogador."
-							opponent = Matchmaking.wait_opponent()
-							if opponent:
-								self.states["thread_running"] = True
-								self.connection = opponent
-								self.match = Match(self.connection, self.states, self.screen)
-								self.match.start()
-								self.gamestate = GameState.MATCH_RUNNING
-								self.match.turn = True
-							else:
-								print "No opponent found."
-							# esperando
-						elif event.key == K_s:
-							print "Procurando por um adversario."
-							opponent = Matchmaking.search_opponent()
+				elif self.gamestate == GameState.MENU: 
+					pressed = pygame.mouse.get_pressed()
+					left_click, m_click, r_click = pressed
 
-							if opponent:
-								self.states["thread_running"] = True
-								self.connection = opponent
-								self.match = Match(self.connection, self.states, self.screen)
-								self.match.start()
-								self.gamestate = GameState.MATCH_RUNNING
-								self.match.turn = False
-							else:
-								print "No opponents at time."
-
+					if left_click:
+						mouse_pos = pygame.mouse.get_pos()
+						for button in self.buttons:		
+							if button.rect.collidepoint(mouse_pos):
+								button.onclick()
+				elif self.gamestate == GameState.CREDITS:
+					pass
+				elif self.gamestate == GameState.HOWTOPLAY:
+					pass
 			self.render()
+	
+	def wait_opponent(self):
+		opponent = Matchmaking.wait_opponent()
+		if opponent:
+			self.states["thread_running"] = True
+			self.connection = opponent
+			self.match = Match(self.connection, self.states, self.screen)
+			self.match.start()
+			self.gamestate = GameState.MATCH_RUNNING
+			self.match.turn = True
+		else:
+			print "No opponent found."
 
-		print "leaving the loop"
+	def search_opponent(self):
+		opponent = Matchmaking.search_opponent()
+
+		if opponent:
+			self.states["thread_running"] = True
+			self.connection = opponent
+			self.match = Match(self.connection, self.states, self.screen)
+			self.match.start()
+			self.gamestate = GameState.MATCH_RUNNING
+			self.match.turn = False
+		else:
+			print "No opponents at time."
+
 	def show_menu(self):
 		self.gamestate = GameState.MENU
 		screen = self.screen
 		screen.fill(Color.MENU_BG)
 
+		self.buttons = []
+
+		top_offset = Settings.SCREEN_HEIGHT/6
+		left_offset = Settings.CELL_SIZE
+		title_obj = self.display_message("Batalha Naval", Color.TITLE, 0.3, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
+
+		# menu options
+		left_offset += Settings.CELL_SIZE
+
+		text_size = 0.8
+		top_offset += title_obj.height
+		btn_procurar = self.display_message("Procurar oponente", Color.MENU_OPTION, text_size, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
+		btn_procurar.onclick = self.search_opponent
+		self.buttons.append(btn_procurar)
+
+		top_offset += btn_procurar.height
+		btn_esperar = self.display_message("Esperar oponente", Color.MENU_OPTION, text_size, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
+		btn_esperar.onclick = self.wait_opponent
+		self.buttons.append(btn_esperar)
+
+		top_offset += btn_esperar.height
+		btn_comojogar = self.display_message("Como jogar", Color.MENU_OPTION, text_size, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
+		btn_comojogar.onclick = self.show_how_to_play
+		self.buttons.append(btn_comojogar)
+
+		top_offset += btn_comojogar.height
+		btn_creditos = self.display_message(u"Creditos", Color.MENU_OPTION, text_size, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
+		btn_creditos.onclick = self.show_credits
+		self.buttons.append(btn_creditos)
+
+		top_offset += btn_creditos.height
+		btn_sair = self.display_message("Sair", Color.MENU_OPTION, text_size, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
+		btn_sair.onclick = self.exit
+		self.buttons.append(btn_sair)
+
 		# menu stuff
+		pygame.display.flip()
+
+	def show_credits(self):
+		self.gamestate = GameState.CREDITS
+		self.screen.fill(Color.MENU_BG)
+
+		top_offset = Settings.CELL_SIZE
+		left_offset = Settings.CELL_SIZE
+		obj = self.display_message("Creditos", Color.TITLE, 0.5, top_offset, left_offset, False, False, "KBZipaDeeDooDah.ttf")
+
+		text_size = 1
+		
+		left_offset += Settings.CELL_SIZE
+		top_offset += obj.height
+		obj = self.display_message(u"Miniprojeto das disciplinas de Programação I e Laboratório de Programação I", Color.BLACK, text_size, top_offset, left_offset)
+
+		top_offset += obj.height
+		obj = self.display_message(u"Ciência da Computação, UFCG", Color.BLACK, text_size, top_offset, left_offset)
+
+		top_offset += obj.height + Settings.CELL_SIZE
+		obj = self.display_message(u"Desenvolvido por", Color.BLACK, text_size, top_offset, left_offset)
+
+		left_offset += Settings.CELL_SIZE
+		top_offset += obj.height
+		obj = self.display_message(u"Jadson Luan Soares da Silva", Color.TITLE, text_size, top_offset, left_offset)
+
+		left_offset -= Settings.CELL_SIZE
+		top_offset += obj.height + Settings.CELL_SIZE
+		obj = self.display_message(u"Agosto/2017", Color.BLACK, text_size, top_offset, left_offset)
+
+		## final
+		top_offset = Settings.SCREEN_HEIGHT - Settings.CELL_SIZE * 2
+		obj = self.display_message(u"Pressione 'ESC' para retornar ao menu", Color.TITLE, text_size, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
+
+		pygame.display.flip()
+
+	def show_how_to_play(self):
+		self.gamestate = GameState.HOWTOPLAY
+		self.screen.fill(Color.MENU_BG)
+
+		top_offset = Settings.CELL_SIZE
+		left_offset = Settings.CELL_SIZE
+		obj = self.display_message("Como jogar", Color.TITLE, 0.5, top_offset, left_offset, False, False, "KBZipaDeeDooDah.ttf")
+
+		text_size = 1
+		
+		left_offset += Settings.CELL_SIZE
+		top_offset += obj.height
+		obj = self.display_message(u"Genérico", Color.BLACK, text_size, top_offset, left_offset)
+
+		left_offset += Settings.CELL_SIZE
+		top_offset += obj.height
+		obj = self.display_message(u"O jogador que destruir todos os návios adversários primeiro, vence.", Color.TITLE, text_size, top_offset, left_offset)
+
+		top_offset += obj.height
+		obj = self.display_message(u"Cada jogador só pode possuir um (1) návio de cada tipo.", Color.TITLE, text_size, top_offset, left_offset)
+
+		##### especifico
+		left_offset -= Settings.CELL_SIZE
+		top_offset += obj.height + Settings.CELL_SIZE
+		obj = self.display_message(u"Fase de preparação", Color.BLACK, text_size, top_offset, left_offset)
+
+		left_offset += Settings.CELL_SIZE
+
+		top_offset += obj.height
+		obj = self.display_message(u"Para selecionar o navio a ser posicionado, utilize as teclas", Color.TITLE, text_size, top_offset, left_offset)
+
+		keys_left_offset = left_offset + obj.width + Settings.CELL_SIZE/4
+		obj = self.display_message(u"Q, W, E, R e T", Color.LOSE, text_size, top_offset, keys_left_offset)
+		
+		top_offset += obj.height
+		obj = self.display_message(u"Para alternar a direção dos navios antes de posicioná-los pressione a tecla", Color.TITLE, text_size, top_offset, left_offset)
+
+		keys_left_offset = left_offset + obj.width + Settings.CELL_SIZE/4
+		obj = self.display_message(u"SPACE", Color.LOSE, text_size, top_offset, keys_left_offset)
+
+
+		## final
+		top_offset = Settings.SCREEN_HEIGHT - Settings.CELL_SIZE * 2
+		obj = self.display_message(u"Pressione 'ESC' para retornar ao menu", Color.TITLE, text_size, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
+
 		pygame.display.flip()
 
 	def win(self, is_wo=False):
 		self.match = None
-		print "you win"
-		if is_wo: print "by w.o."
 		self.gamestate = GameState.WIN
 		screen = self.screen
 		screen.fill(Color.WIN)
 
-		self.display_message(u"Parabéns. Você venceu!", Color.GRAY, 0.5, -30, 0, True, True)
-		self.display_message(u"Seu oponente desconectou.", Color.WHITE, 0.5, 0, 0, True, True)
-		self.display_message(u"Pressione 'ESC' para retornar ao menu.", Color.GRAY, 1, Settings.SCREEN_HEIGHT - 30, 0, True, False)
+		self.display_message(u"Parabéns. Você venceu!", Color.WHITE, 0.5, 0, 0, True, True)
+			
+		if is_wo:
+			self.display_message(u"Seu oponente desconectou.", Color.GRAY, 0.5, -30, 0, True, True)
+
+		self.display_message(u"Pressione 'ESC' para retornar ao menu.", Color.WHITE, 1, Settings.SCREEN_HEIGHT - 30, 0, True, False)
 
 		# win stuff
 		pygame.display.flip()
 
 	def lose(self):
-		print "you lose"
 		self.match = None
 		self.gamestate = GameState.LOSE
 		screen = self.screen
 		screen.fill(Color.LOSE)
 
 		self.display_message(u"Você perdeu!", Color.WHITE, 0.5, 0, 0, True, True)
-		self.display_message(u"Pressione 'ESC' para retornar ao menu.", Color.GRAY, 1, Settings.SCREEN_HEIGHT - 30, 0, True, False)		
+		self.display_message(u"Pressione 'ESC' para retornar ao menu.", Color.WHITE, 1, Settings.SCREEN_HEIGHT - 30, 0, True, False)
 		# lose stuff
 		pygame.display.flip()
 
@@ -614,25 +752,10 @@ class Game:
 		pass
 		# bla bla
 
-	def display_message(self, text, color, size, top_offset, left_offset, centerx=False, centery=False):
-		font = pygame.font.SysFont(None, int(Settings.CELL_SIZE/size))
-		surf = font.render(text, 1, color)
-
-		text_size = font.size(text)
-
-		width = text_size[0]
-		height = text_size[1]
-		
-		s_rect = surf.get_rect()
-		
-		s_rect.left = left_offset
-		s_rect.top = top_offset
-
-		if centerx: s_rect.left += Settings.SCREEN_WIDTH/2 - width/2
-		if centery:	s_rect.top += Settings.SCREEN_HEIGHT/2 - height/2
-
-		self.screen.blit(surf, s_rect)
-		return text_size
+	def display_message(self, text, color, size, top_offset, left_offset, centerx=False, centery=False, fontname=None):
+		text_obj = Text(text, color, size, left_offset, top_offset, centerx, centery, fontname)
+		self.screen.blit(text_obj.surface, text_obj.get_new_rect())
+		return text_obj
 
 	def render(self):
 		if self.gamestate == GameState.MATCH_RUNNING:
@@ -678,7 +801,7 @@ class Game:
 				left_offset += Settings.CELL_SIZE/2
 				top_offset += int(Settings.CELL_SIZE/4)
 				for key in Settings.SHIPS:
-					color = Color.TEXT if key == self.selected_ship else Color.FAIL
+					color = Color.SELECTED if key == self.selected_ship else Color.FAIL
 					color = Color.SUCCESS if key in self.match.ships else color
 
 					ship = Settings.SHIPS[key]
@@ -687,15 +810,15 @@ class Game:
 
 
 				top_offset += Settings.CELL_SIZE/2
-				size = self.display_message(u"[SPACE]", Color.GRAY, 1.5, top_offset, left_offset)
+				text_obj = self.display_message(u"[SPACE]", Color.GRAY, 1.5, top_offset, left_offset)
 
-				color_h = Color.TEXT if self.ship_orientation == "H" else Color.GRAY
-				color_v = Color.TEXT if self.ship_orientation == "V" else Color.GRAY
+				color_h = Color.SELECTED if self.ship_orientation == "H" else Color.GRAY
+				color_v = Color.SELECTED if self.ship_orientation == "V" else Color.GRAY
 
-				left_offset += size[0] + Settings.CELL_SIZE
+				left_offset += text_obj.width + Settings.CELL_SIZE
 				size = self.display_message("Horizontal", color_h, 1.5, top_offset, left_offset)
 
-				left_offset += size[0] + Settings.CELL_SIZE
+				left_offset += text_obj.width + Settings.CELL_SIZE
 				self.display_message("Vertical", color_v, 1.5, top_offset, left_offset)
 
 			pygame.display.flip()
