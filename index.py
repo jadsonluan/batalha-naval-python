@@ -60,8 +60,14 @@ class Color:
 	TEXT = (44,185,217)
 	SUCCESS = (45,199,45)
 	FAIL = (203,17,38)
+
+	# State
+	WIN = (74,199,204) 
+	LOSE = (204,79,74)
+
+	# Basic
 	GRAY = (84,74,74)
-	WIN = (44,185,217)
+	WHITE = (255,255,255)
 
 class GameState(Enum):
 	PREPARATION = 0
@@ -70,6 +76,7 @@ class GameState(Enum):
 	GAMEOVER = 3
 	MENU = 4
 	WIN = 5
+	LOSE = 6
 
 class Code(Enum):
 	PREPARED = "P"
@@ -168,7 +175,7 @@ class Matchmaking:
 		# 	print "checking:", hostname
 
 		# 	#and then check the response...
-		con = Matchmaking.connect("192.168.25.53", Settings.PORT)
+		con = Matchmaking.connect("localhost", Settings.PORT)
 		# 	if con:
 		return con
 
@@ -177,10 +184,11 @@ class Matchmaking:
 	@staticmethod
 	def wait_opponent():
 		# getting local ip
-		s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-		s.connect(("8.8.8.8", 80))
-		host = s.getsockname()[0]
-		s.close()
+		# s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		# s.connect(("8.8.8.8", 80))
+		# host = s.getsockname()[0]
+		# s.close()
+		host = "localhost"
 
 		server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -226,6 +234,8 @@ class Match(threading.Thread):
 		self.state = GameState.PREPARATION
 		self.prepared = False
 		self.enemy_prepared = False
+		self.win = False
+		self.lose = False
 		self.turn = None
 
 		self.setup_boards()
@@ -247,6 +257,7 @@ class Match(threading.Thread):
 				pass
 
 		print "desconecting..."
+		self.states['thread_running'] = False
 		self.connection.close()
 
 	def shot(self, cell, row, col):
@@ -285,9 +296,8 @@ class Match(threading.Thread):
 
 			if self.count_ships() <= 0:
 				self.gameover()
-				print "You lose!"
 		elif code == Code.GAMEOVER.value:
-			print "You win!"
+			self.win = True
 			# if self.match.count_ships(2) <= 0:
 			# 	self.match.state = GameState.GAMEOVER
 			# 	self.gamestate = GameState.GAMEOVER
@@ -343,7 +353,8 @@ class Match(threading.Thread):
 				can = True
 
 				for i in range(1, ship.size):
-					if cell.ship is not None:
+					aux_cell = board[row][col+i]
+					if aux_cell.ship is not None:
 						can = False
 					
 				if can:
@@ -361,7 +372,8 @@ class Match(threading.Thread):
 				can = True
 
 				for i in range(1, ship.size):
-					if cell.ship is not None:
+					aux_cell = board[row+i][col]
+					if aux_cell.ship is not None:
 						can = False
 					
 				if can:
@@ -415,6 +427,7 @@ class Match(threading.Thread):
 
 	def gameover(self):
 		self.connection.send(Code.GAMEOVER.value)
+		self.lose = True
 
 	def render(self):
 		screen = self.screen
@@ -458,11 +471,12 @@ class Game:
 		self.selected_ship = None
 		self.ship_orientation = "H"
 		self.show_menu()
+		self.match = None
 
 	def loop(self):
 		while self.running:
 			for event in pygame.event.get():
-				if event.type == pygame.QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
+				if event.type == pygame.QUIT:
 					print "trying to quit"
 					self.exit()
 
@@ -470,7 +484,18 @@ class Game:
 					# debug code
 					pass
 
+				if self.match is None and (self.gamestate == GameState.WIN or self.gamestate == GameState.LOSE) and event.type == KEYDOWN and event.key == K_ESCAPE:
+					print "show menu"
+					self.show_menu()
+
+				# W.O
 				if self.gamestate == GameState.MATCH_RUNNING and not self.states["thread_running"]:
+					time.sleep(1)
+					self.win(True)
+				elif self.gamestate == GameState.MATCH_RUNNING and self.match.lose:
+					time.sleep(1)
+					self.lose()
+				elif self.gamestate == GameState.MATCH_RUNNING and self.match.win:
 					time.sleep(1)
 					self.win()
 
@@ -524,6 +549,7 @@ class Game:
 							print "Esperando por outro jogador."
 							opponent = Matchmaking.wait_opponent()
 							if opponent:
+								self.states["thread_running"] = True
 								self.connection = opponent
 								self.match = Match(self.connection, self.states, self.screen)
 								self.match.start()
@@ -537,6 +563,7 @@ class Game:
 							opponent = Matchmaking.search_opponent()
 
 							if opponent:
+								self.states["thread_running"] = True
 								self.connection = opponent
 								self.match = Match(self.connection, self.states, self.screen)
 								self.match.start()
@@ -556,25 +583,56 @@ class Game:
 		# menu stuff
 		pygame.display.flip()
 
-	def win(self):
+	def win(self, is_wo=False):
+		self.match = None
+		print "you win"
+		if is_wo: print "by w.o."
 		self.gamestate = GameState.WIN
 		screen = self.screen
 		screen.fill(Color.WIN)
 
-		self.display_message(u"Você venceu!", Color.GRAY, 0.5, 10, Settings.BOARD_SIZE[1]/2)
+		self.display_message(u"Parabéns. Você venceu!", Color.GRAY, 0.5, -30, 0, True, True)
+		self.display_message(u"Seu oponente desconectou.", Color.WHITE, 0.5, 0, 0, True, True)
+		self.display_message(u"Pressione 'ESC' para retornar ao menu.", Color.GRAY, 1, Settings.SCREEN_HEIGHT - 30, 0, True, False)
 
 		# win stuff
+		pygame.display.flip()
+
+	def lose(self):
+		print "you lose"
+		self.match = None
+		self.gamestate = GameState.LOSE
+		screen = self.screen
+		screen.fill(Color.LOSE)
+
+		self.display_message(u"Você perdeu!", Color.WHITE, 0.5, 0, 0, True, True)
+		self.display_message(u"Pressione 'ESC' para retornar ao menu.", Color.GRAY, 1, Settings.SCREEN_HEIGHT - 30, 0, True, False)		
+		# lose stuff
 		pygame.display.flip()
 
 	def start_match(self):
 		pass
 		# bla bla
 
-	def display_message(self, text, color, size, top_offset, left_offset):
+	def display_message(self, text, color, size, top_offset, left_offset, centerx=False, centery=False):
 		font = pygame.font.SysFont(None, int(Settings.CELL_SIZE/size))
 		surf = font.render(text, 1, color)
-		self.screen.blit(surf, (left_offset, top_offset))
-		return font.size(text)
+
+		text_size = font.size(text)
+
+		width = text_size[0]
+		height = text_size[1]
+		
+		s_rect = surf.get_rect()
+		
+		s_rect.left = left_offset
+		s_rect.top = top_offset
+
+		if centerx: s_rect.left += Settings.SCREEN_WIDTH/2 - width/2
+		if centery:	s_rect.top += Settings.SCREEN_HEIGHT/2 - height/2
+
+		self.screen.blit(surf, s_rect)
+		return text_size
 
 	def render(self):
 		if self.gamestate == GameState.MATCH_RUNNING:
@@ -648,6 +706,8 @@ class Game:
 		elif self.gamestate == GameState.WIN:
 			pass
 		elif self.gamestate == GameState.MENU:
+			pass
+		elif self.gamestate == GameState.LOSE:
 			pass
 
 	def exit(self):
