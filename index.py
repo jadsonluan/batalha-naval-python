@@ -23,6 +23,7 @@ class Ship(Enum):
 class Settings:
 	# Matchmaking
 	TIMEOUT = 0.5
+	MAX_WAIT_TIME = 2 * (TIMEOUT * 255) # 2 vezes o tempo de procurar por todos os hosts
 	PORT = 5000
 
 	# Sizing
@@ -167,75 +168,6 @@ class Cell:
 			self.shooted = True
 			pos = Settings.CELL_SIZE/2, Settings.CELL_SIZE/2
 			pygame.draw.circle(self.image, (0,0,0), pos, Settings.CELL_SIZE/4)
-
-class Matchmaking:
-	@staticmethod
-	def connect(HOSTNAME, PORT, use_timeout=True):
-		"""
-		Realiza (ou não) conexão com um host
-		"""
-		dest = (HOSTNAME, PORT)
-
-		tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		
-		if use_timeout:
-			tcp.settimeout(Settings.TIMEOUT)
-
-		try:
-			tcp.connect(dest)
-			return tcp
-		except:
-			return None
-
-	@staticmethod
-	def search_opponent():
-		'''
-		Varre toda a rede local em busca de algum oponente
-		'''
-		# s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-		# s.connect(("8.8.8.8", 80))
-		# myip = s.getsockname()[0]
-		# s.close()
-
-		# # Pegando a mask
-		# bcast = myip.split(".")
-		# myip_end = bcast.pop(3)
-		# bcast = ".".join(bcast)
-		# bcast += "."
-
-		# timeout_secs = 0.25
-
-		# # Procurando
-		# print "Max. waiting time: %d secs" % int(Settings.TIMEOUT * 255)
-		# for i in range(1, 256):
-		# 	hostname = bcast + str(i)
-		# 	print "checking:", hostname
-
-		# 	#and then check the response...
-		con = Matchmaking.connect("localhost", Settings.PORT)
-		# 	if con:
-		return con
-
-		# return None
-
-	@staticmethod
-	def wait_opponent():
-		# getting local ip
-		# s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-		# s.connect(("8.8.8.8", 80))
-		# host = s.getsockname()[0]
-		# s.close()
-		host = "localhost"
-
-		server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-		origin = (host, Settings.PORT)
-		server.bind(origin)
-		server.listen(1)
-
-		con, client = server.accept()
-		con.settimeout(Settings.TIMEOUT)
-		return con
 
 class Match(threading.Thread):
 	def __init__(self, con, states, screen):
@@ -466,6 +398,95 @@ class Match(threading.Thread):
 				cell2 = enemy_board[row][col]
 				screen.blit(cell2.image, cell2.rect)
 
+class Matchmaking(threading.Thread):
+	def __init__(self, waiting):
+		threading.Thread.__init__(self)
+		self.waiting = waiting
+		self.stopped = False
+		self.opponent = None
+
+	def run(self):
+		self.running = True
+		if self.waiting:
+			self.opponent = self.wait_opponent()
+		else:
+			self.opponent = self.search_opponent()
+
+		self.running = False
+
+	def wait_opponent(self):
+		# getting local ip
+		s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		s.connect(("8.8.8.8", 80))
+		host = s.getsockname()[0]
+		s.close()
+
+		server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		origin = (host, Settings.PORT)
+		server.bind(origin)
+		
+		self.stopped = False
+		while not self.stopped:
+			try:
+				server.settimeout(1)
+				server.listen(1)
+				con, client = server.accept()
+			except socket.timeout:
+				pass
+			except:
+				print "error"
+			else:
+				self.stopped = True
+				return con
+
+	def search_opponent(self):
+		'''
+		Varre toda a rede local em busca de algum oponente
+		'''
+		s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		s.connect(("8.8.8.8", 80))
+		myip = s.getsockname()[0]
+		s.close()
+
+		# Pegando a mask
+		bcast = myip.split(".")
+		myip_end = bcast.pop(3)
+		bcast = ".".join(bcast)
+		bcast += "."
+
+		# Procurando
+		i = 50
+		while i < 256 and not self.stopped:
+			hostname = bcast + str(i)
+			#and then check the response...
+			print "Trying connect to", hostname
+			con = self.connect(hostname, Settings.PORT)
+			
+			if con:
+				return con
+
+			i += 1
+
+		return None
+
+	def connect(self, HOSTNAME, PORT, use_timeout=True):
+		"""
+		Realiza (ou não) conexão com um host
+		"""
+		dest = (HOSTNAME, PORT)
+
+		tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		
+		if use_timeout:
+			tcp.settimeout(0.5)
+
+		try:
+			tcp.connect(dest)
+			return tcp
+		except:
+			return None
+
 class Game:
 	states = {}
 	running = True
@@ -483,11 +504,15 @@ class Game:
 		self.selected_ship = None
 		self.ship_orientation = "H"
 		self.buttons = []
+		self.matchmaking = None
 		self.show_menu()
 		self.match = None
 
 	def loop(self):
 		while self.running:
+			if self.matchmaking:
+				self.analyse_matchmaking()
+
 			for event in pygame.event.get():
 				if event.type == pygame.QUIT:
 					self.exit()
@@ -537,6 +562,10 @@ class Game:
 
 					if l_click:
 						mouse_pos = pygame.mouse.get_pos()
+
+						if self.btn_desistir.collidepoint(mouse_pos):
+							self.match.gameover()
+
 						if self.match.state == GameState.PREPARATION and not self.match.prepared:
 							board = self.match.board
 							for row in range(len(board)):
@@ -547,7 +576,8 @@ class Game:
 											if self.match.put_ship((row, col), self.selected_ship, self.ship_orientation):
 												self.selected_ship = None
 											else:
-												print "não foi possivel por o ship em %d,%d" % (row, col)
+												# não foi possivel por o ship em row, col)
+												pass
 						elif self.match.state == GameState.SHOOTING and self.match.turn:
 							board = self.match.enemy_board
 							for row in range(len(board)):
@@ -557,45 +587,71 @@ class Game:
 										if not cell.shooted:
 											self.match.shot(cell, row, col)
 											
-				elif self.gamestate == GameState.MENU: 
+				elif self.gamestate == GameState.MENU:
 					pressed = pygame.mouse.get_pressed()
 					left_click, m_click, r_click = pressed
 
 					if left_click:
 						mouse_pos = pygame.mouse.get_pos()
-						for button in self.buttons:		
+						for button in self.buttons:
 							if button.rect.collidepoint(mouse_pos):
 								button.onclick()
+								time.sleep(0.5)
 				elif self.gamestate == GameState.CREDITS:
 					pass
 				elif self.gamestate == GameState.HOWTOPLAY:
 					pass
 			self.render()
 	
+	def analyse_matchmaking(self):
+		if not self.matchmaking.running and self.matchmaking.opponent:
+			opponent = self.matchmaking.opponent
+			print "Acabou o matchmaking e há oponente.", opponent
+
+			if self.matchmaking.waiting:
+				self.states["thread_running"] = True
+				self.connection = opponent
+				self.match = Match(self.connection, self.states, self.screen)
+				self.match.start()
+				self.gamestate = GameState.MATCH_RUNNING
+				self.match.turn = True
+				self.matchmaking = None
+			else:
+				self.states["thread_running"] = True
+				self.connection = opponent
+				self.match = Match(self.connection, self.states, self.screen)
+				self.match.start()
+				self.gamestate = GameState.MATCH_RUNNING
+				self.match.turn = False
+				self.matchmaking = None
+
+			self.render()
+		elif not self.matchmaking.running and not self.matchmaking.opponent:
+			print "Acabou o matchmaking e não há oponente."
+			self.matchmaking = None
+			self.show_menu()
+
 	def wait_opponent(self):
-		opponent = Matchmaking.wait_opponent()
-		if opponent:
-			self.states["thread_running"] = True
-			self.connection = opponent
-			self.match = Match(self.connection, self.states, self.screen)
-			self.match.start()
-			self.gamestate = GameState.MATCH_RUNNING
-			self.match.turn = True
+		if not self.matchmaking:
+			self.matchmaking = Matchmaking(True)
+			self.matchmaking.start()
 		else:
-			print "No opponent found."
+			if self.matchmaking.waiting:
+				self.matchmaking.stopped = True
+				self.matchmaking = None
+
+		self.show_menu()
 
 	def search_opponent(self):
-		opponent = Matchmaking.search_opponent()
-
-		if opponent:
-			self.states["thread_running"] = True
-			self.connection = opponent
-			self.match = Match(self.connection, self.states, self.screen)
-			self.match.start()
-			self.gamestate = GameState.MATCH_RUNNING
-			self.match.turn = False
+		if not self.matchmaking:
+			self.matchmaking = Matchmaking(False)
+			self.matchmaking.start()
 		else:
-			print "No opponents at time."
+			if not self.matchmaking.waiting:
+				self.matchmaking.stopped = True
+				self.matchmaking = None
+
+		self.show_menu()
 
 	def show_menu(self):
 		self.gamestate = GameState.MENU
@@ -613,12 +669,16 @@ class Game:
 
 		text_size = 0.8
 		top_offset += title_obj.height
-		btn_procurar = self.display_message("Procurar oponente", Color.MENU_OPTION, text_size, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
+		procurar_color = Color.FAIL if self.matchmaking and not self.matchmaking.waiting else Color.MENU_OPTION
+		procurar_text = "Cancelar busca" if self.matchmaking and not self.matchmaking.waiting else "Procurar oponente"
+		btn_procurar = self.display_message(procurar_text, procurar_color, text_size, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
 		btn_procurar.onclick = self.search_opponent
 		self.buttons.append(btn_procurar)
 
 		top_offset += btn_procurar.height
-		btn_esperar = self.display_message("Esperar oponente", Color.MENU_OPTION, text_size, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
+		esperar_color = Color.FAIL if self.matchmaking and self.matchmaking.waiting else Color.MENU_OPTION
+		esperar_text = "Cancelar espera" if self.matchmaking and self.matchmaking.waiting else "Esperar oponente"
+		btn_esperar = self.display_message(esperar_text, esperar_color, text_size, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
 		btn_esperar.onclick = self.wait_opponent
 		self.buttons.append(btn_esperar)
 
@@ -636,6 +696,12 @@ class Game:
 		btn_sair = self.display_message("Sair", Color.MENU_OPTION, text_size, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
 		btn_sair.onclick = self.exit
 		self.buttons.append(btn_sair)
+
+		if self.matchmaking:
+			if self.matchmaking.waiting:
+				self.display_message("Esperando oponente [...]", Color.GRAY, 1, Settings.SCREEN_HEIGHT - 30, 20)
+			else:
+				self.display_message("Procurando oponente [...]", Color.GRAY, 1, Settings.SCREEN_HEIGHT - 30, 20)
 
 		# menu stuff
 		pygame.display.flip()
@@ -766,6 +832,35 @@ class Game:
 				left_offset = Settings.BOARD1_LEFT_OFFSET + Settings.BOARD_SIZE[0] + Settings.CELL_SIZE
 				text = "Turno: %s" % (u"você" if self.match.turn else "oponente")
 				self.display_message(text, Color.TEXT, 1, top_offset, left_offset)
+
+				# COR DOS BARCOS
+				grid1_width = Settings.BOARD_SIZE[0]
+				grid1_height = (Settings.SCREEN_TOP_OFFSET - 3) * Settings.CELL_SIZE
+
+				grid1 = pygame.Surface([grid1_width, grid1_height])
+				grid1.fill(Color.GRID)
+				grid1.set_alpha(75)
+				left_offset = Settings.BOARD1_LEFT_OFFSET
+				top_offset = Settings.BOARD_SIZE[1] + 2 * Settings.CELL_SIZE
+				self.screen.blit(grid1, (left_offset, top_offset))
+
+
+
+				left_offset += Settings.CELL_SIZE/2
+				top_offset += int(Settings.CELL_SIZE/4)
+
+				self.display_message(u"Navios: Tamanho | Nome (+cor)", Color.WHITE, 1.25, top_offset, left_offset)
+
+				left_offset += Settings.CELL_SIZE
+				top_offset += Settings.CELL_SIZE
+				for key in Settings.SHIPS:
+					color = Color.SELECTED if key == self.selected_ship else Color.FAIL
+					color = Color.SUCCESS if key in self.match.ships else color
+
+					ship = Settings.SHIPS[key]
+					self.display_message(u"[%d] %s" % (ship.size, ship.name), ship.color, 1.5, top_offset, left_offset)
+					top_offset += Settings.CELL_SIZE/2
+
 			else:
 				# Preparação
 				top_offset = Settings.CELL_SIZE
@@ -821,6 +916,28 @@ class Game:
 				left_offset += text_obj.width + Settings.CELL_SIZE
 				self.display_message("Vertical", color_v, 1.5, top_offset, left_offset)
 
+			top_offset = Settings.BOARD1_TOP_OFFSET + Settings.BOARD_SIZE[1] - Settings.CELL_SIZE * 1 - Settings.PADDING * 2
+			left_offset = Settings.BOARD1_LEFT_OFFSET + Settings.BOARD_SIZE[0] + int(Settings.CELL_SIZE * 2.75)
+
+			desistir = self.display_message("Desistir", Color.WHITE, 1, top_offset, left_offset)
+
+			width = (desistir.width) + (int(3.5 * Settings.CELL_SIZE))
+			height = desistir.height * 2
+			surf = pygame.Surface([width, height])
+			surf.fill(Color.FAIL)
+
+			surf_top = Settings.BOARD1_TOP_OFFSET + Settings.BOARD_SIZE[1] - Settings.CELL_SIZE * 1.5 - Settings.PADDING
+			surf_left = Settings.BOARD1_LEFT_OFFSET + Settings.BOARD_SIZE[0] + Settings.CELL_SIZE
+			
+			s_rect = surf.get_rect()
+			s_rect.x = surf_left
+			s_rect.y = surf_top
+
+			self.screen.blit(surf, s_rect)
+			self.btn_desistir = s_rect
+			
+			self.display_message("Desistir", Color.WHITE, 1, top_offset, left_offset)
+
 			pygame.display.flip()
 		elif self.gamestate == GameState.GAMEOVER:
 			self.screen.fill((255,255,0))
@@ -836,6 +953,8 @@ class Game:
 	def exit(self):
 		self.running = False
 		self.states["thread_running"] = False
+		if self.matchmaking:
+			self.matchmaking.stopped = True
 		sys.exit()
 
 if __name__ == "__main__":
