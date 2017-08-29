@@ -456,7 +456,7 @@ class Matchmaking(threading.Thread):
 		bcast += "."
 
 		# Procurando
-		i = 50
+		i = 1
 		while i < 256 and not self.stopped:
 			hostname = bcast + str(i)
 			#and then check the response...
