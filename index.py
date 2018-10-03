@@ -662,7 +662,7 @@ class Game:
 
 		top_offset = Settings.SCREEN_HEIGHT/6
 		left_offset = Settings.CELL_SIZE
-		title_obj = self.display_message("Batalha Naval", Color.TITLE, 0.3, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
+		title_obj = self.display_message("Batalha Naval", Color.TITLE, 0.3, top_offset, 0, True, False, "game-font.ttf")
 
 		# menu options
 		left_offset += Settings.CELL_SIZE
@@ -671,29 +671,29 @@ class Game:
 		top_offset += title_obj.height
 		procurar_color = Color.FAIL if self.matchmaking and not self.matchmaking.waiting else Color.MENU_OPTION
 		procurar_text = "Cancelar busca" if self.matchmaking and not self.matchmaking.waiting else "Procurar oponente"
-		btn_procurar = self.display_message(procurar_text, procurar_color, text_size, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
+		btn_procurar = self.display_message(procurar_text, procurar_color, text_size, top_offset, 0, True, False, "game-font.ttf")
 		btn_procurar.onclick = self.search_opponent
 		self.buttons.append(btn_procurar)
 
 		top_offset += btn_procurar.height
 		esperar_color = Color.FAIL if self.matchmaking and self.matchmaking.waiting else Color.MENU_OPTION
 		esperar_text = "Cancelar espera" if self.matchmaking and self.matchmaking.waiting else "Esperar oponente"
-		btn_esperar = self.display_message(esperar_text, esperar_color, text_size, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
+		btn_esperar = self.display_message(esperar_text, esperar_color, text_size, top_offset, 0, True, False, "game-font.ttf")
 		btn_esperar.onclick = self.wait_opponent
 		self.buttons.append(btn_esperar)
 
 		top_offset += btn_esperar.height
-		btn_comojogar = self.display_message("Como jogar", Color.MENU_OPTION, text_size, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
+		btn_comojogar = self.display_message("Como jogar", Color.MENU_OPTION, text_size, top_offset, 0, True, False, "game-font.ttf")
 		btn_comojogar.onclick = self.show_how_to_play
 		self.buttons.append(btn_comojogar)
 
 		top_offset += btn_comojogar.height
-		btn_creditos = self.display_message(u"Creditos", Color.MENU_OPTION, text_size, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
+		btn_creditos = self.display_message(u"Creditos", Color.MENU_OPTION, text_size, top_offset, 0, True, False, "game-font.ttf")
 		btn_creditos.onclick = self.show_credits
 		self.buttons.append(btn_creditos)
 
 		top_offset += btn_creditos.height
-		btn_sair = self.display_message("Sair", Color.MENU_OPTION, text_size, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
+		btn_sair = self.display_message("Sair", Color.MENU_OPTION, text_size, top_offset, 0, True, False, "game-font.ttf")
 		btn_sair.onclick = self.exit
 		self.buttons.append(btn_sair)
 
@@ -712,7 +712,7 @@ class Game:
 
 		top_offset = Settings.CELL_SIZE
 		left_offset = Settings.CELL_SIZE
-		obj = self.display_message("Creditos", Color.TITLE, 0.5, top_offset, left_offset, False, False, "KBZipaDeeDooDah.ttf")
+		obj = self.display_message("Creditos", Color.TITLE, 0.5, top_offset, left_offset, False, False, "game-font.ttf")
 
 		text_size = 1
 		
@@ -736,7 +736,7 @@ class Game:
 
 		## final
 		top_offset = Settings.SCREEN_HEIGHT - Settings.CELL_SIZE * 2
-		obj = self.display_message(u"Pressione 'ESC' para retornar ao menu", Color.TITLE, text_size, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
+		obj = self.display_message(u"Pressione 'ESC' para retornar ao menu", Color.TITLE, text_size, top_offset, 0, True, False, "game-font.ttf")
 
 		pygame.display.flip()
 
@@ -746,7 +746,7 @@ class Game:
 
 		top_offset = Settings.CELL_SIZE
 		left_offset = Settings.CELL_SIZE
-		obj = self.display_message("Como jogar", Color.TITLE, 0.5, top_offset, left_offset, False, False, "KBZipaDeeDooDah.ttf")
+		obj = self.display_message("Como jogar", Color.TITLE, 0.5, top_offset, left_offset, False, False, "game-font.ttf")
 
 		text_size = 1
 		
@@ -783,7 +783,7 @@ class Game:
 
 		## final
 		top_offset = Settings.SCREEN_HEIGHT - Settings.CELL_SIZE * 2
-		obj = self.display_message(u"Pressione 'ESC' para retornar ao menu", Color.TITLE, text_size, top_offset, 0, True, False, "KBZipaDeeDooDah.ttf")
+		obj = self.display_message(u"Pressione 'ESC' para retornar ao menu", Color.TITLE, text_size, top_offset, 0, True, False, "game-font.ttf")
 
 		pygame.display.flip()
 
